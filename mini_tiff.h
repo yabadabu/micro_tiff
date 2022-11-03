@@ -9,7 +9,7 @@
 	#include "mini_tiff.h"
 
 	// Save a tiff. wxh RGB 16 bits/channel
-	return MiniTiff::save(out_filename, img.w, img.h, 3, 16, img.data());
+	bool is_ok = MiniTiff::save(out_filename, img.w, img.h, 3, 16, img.data());
 
 	// Load a tiff takes longer, but you can read the file directly to your container without tmp allocations
 	ImageRGB rgb;
