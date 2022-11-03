@@ -10,6 +10,7 @@ I use it to read and save files and see the files in Photoshop for example.
 - Only uncompressed TIFFs
 - No metadata is saved/recovered.
 - Data is assumed to be in a linear buffer when saving it
+- No exceptions. API will return true if everything is ok, false if there is an error.
 
 # Install
 
