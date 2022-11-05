@@ -1,16 +1,17 @@
 # mini_tiff
 
-This is a super simple header only library to read/write TIFF files supporting 16 bits per channel.
+This is a super simple header only library to read/write TIFF files supporting 16 bits per channel (unsigned shorts), and 32 bits per channel (floats)
 I use it to read and save files and see the files in Photoshop for example.
 
 # Features
 
-- Support mono and RGB files
-- Support 8 and 16 bits per channel
+- Support mono, RGB and RGB+Alpha files
+- Support 8,16 bits or 32 bits per channel (uint8/uint16/float)
 - Only uncompressed TIFFs
 - No metadata is saved/recovered.
 - Data is assumed to be in a linear buffer when saving it
 - No exceptions. API will return true if everything is ok, false if there is an error.
+- For 4 channels images, pixel layout is Red, Green, Blue, Alpha
 
 # Install
 
@@ -33,7 +34,7 @@ If file can't be parsed the lambda will not get called and a false is returned.
 ```c++
   ImageRGB rgb;
   bool is_ok = MiniTiff::load(infilename, [&](int w, int h, int num_components, int bits_per_component, MiniTiff::FileReader& f) -> bool {
-    // Confirm the tiff contains the format we expect
+    // Confirm the tiff contains the format we expect in this concrete example
     if (bits_per_component != 16 || num_components != 3)
       return false;
     // Redimension my image buffer

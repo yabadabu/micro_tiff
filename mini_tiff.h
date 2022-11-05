@@ -70,7 +70,7 @@ namespace MiniTiff {
 		}
 	};
 
-	namespace {
+	namespace internal {
 
 		struct IFDEntry {
 			uint16_t id = 0;
@@ -84,7 +84,8 @@ namespace MiniTiff {
 		struct Header {
 			uint8_t  byte_order[2] = { 0x49, 0x49 };
 			uint8_t  magic[2] = { 0x2a, 0x00 };
-			uint32_t offset_first_ifd = 8;
+			uint32_t offset_first_ifd = 8;				// This is not strictly true
+			bool isValid() const { return magic[0] == 0x2a && magic[1] == 0 && byte_order[0] == 0x49 && byte_order[1] == 0x49 && offset_first_ifd == 8; }
 		};
 
 		static constexpr uint16_t IFD_ImageType = 0x00FE;
@@ -97,7 +98,9 @@ namespace MiniTiff {
 		static constexpr uint16_t IFD_Orientation = 0x0112;
 		static constexpr uint16_t IFD_NumComponents = 0x0115;
 		static constexpr uint16_t IFD_RowsPerStrip = 0x0116;
-		static constexpr uint16_t IFD_TotalButesForData = 0x0117;
+		static constexpr uint16_t IFD_TotalBytesForData = 0x0117;
+		static constexpr uint16_t IFD_ExtraSamples = 0x0152;			// Meaning of the alpha channel (for RGBA images)
+		static constexpr uint16_t IFD_SampleFormat = 0x0153;			// Data are uints(1), ints(2) or floats(3)?
 
 		static constexpr uint16_t IFD_XResolution = 0x011A;
 		static constexpr uint16_t IFD_YResolution = 0x011B;
@@ -113,11 +116,13 @@ namespace MiniTiff {
 
 	static bool save(const char* ofilename, int w, int h, int num_components, int bits_per_component, const void* data ) {
 
+		using namespace internal;
+
 		// Validate input parameters
 		if( ! ((w > 0)
 			&& (h > 0)
-			&& (bits_per_component == 8 || bits_per_component == 16)
-			&& (num_components == 1 || num_components == 3)
+			&& (bits_per_component == 8 || bits_per_component == 16 || bits_per_component == 32)
+			&& (num_components == 1 || num_components == 3 || num_components == 4)
 			&& (data)
 			))
 			return false;
@@ -134,19 +139,23 @@ namespace MiniTiff {
 		uint32_t bytes_per_component = bits_per_component / 8;
 		uint32_t offset_for_data = 256;
 		uint32_t total_data_bytes = w * h * num_components * bytes_per_component;
-		uint32_t photometric_interpretation = (num_components == 3) ? 2 : 1;
+		uint32_t photometric_interpretation = (num_components == 1) ? 1 : 2;
 
 		// https://www.awaresystems.be/imaging/tiff/tifftags/baseline.html
 		f.write(IFDEntry(IFD_ImageType, 0));		// Image Type
-		f.write(IFDEntry(IFD_Width, w));		// width
-		f.write(IFDEntry(IFD_Height, h));		// Height
-		f.write(IFDEntry(IFD_BitsPerSample, bits_per_component));		// 8 or 16
+		f.write(IFDEntry(IFD_Width, w));			// width
+		f.write(IFDEntry(IFD_Height, h));			// Height
+		f.write(IFDEntry(IFD_BitsPerSample, bits_per_component));		// 8, 16 or 32
 		f.write(IFDEntry(IFD_Compression, 1));		// Compression : 1 = none
 		f.write(IFDEntry(IFD_PhotometricInterpretation, photometric_interpretation));		// PhotometricInterpretation : 2: RGB, 1:Grey
 		f.write(IFDEntry(IFD_OffsetForData, offset_for_data));	// StripOffsets : offset to start of actual data
 		f.write(IFDEntry(IFD_NumComponents, num_components));		// SamplesPerPixel : 3
+
+		if( bits_per_component == 32 )
+			f.write(IFDEntry(IFD_SampleFormat, 3));		// data are floats (3)
+
 		f.write(IFDEntry(IFD_RowsPerStrip, h));	// Height
-		f.write(IFDEntry(IFD_TotalButesForData, total_data_bytes));
+		f.write(IFDEntry(IFD_TotalBytesForData, total_data_bytes));
 		size_t num_padding_bytes = offset_for_data - f.bytes_written;
 		for (int i = 0; i < num_padding_bytes; ++i)
 			f.write((uint8_t)0xff);
@@ -156,12 +165,17 @@ namespace MiniTiff {
 
 	template< typename Fn >
 	static bool load(const char* ifilename, Fn fn ) {
+
+		using namespace internal;
+
 		FileReader f;
 		if (!f.open(ifilename))
 			return false;
 
 		Header header;
 		f.read(header);
+		if (!header.isValid())
+			return false;
 
 		uint16_t num_ifds = 0;
 		f.read(num_ifds);
@@ -178,79 +192,127 @@ namespace MiniTiff {
 			IFDEntry ifd;
 			f.read(ifd);
 
+			//printf("%04x:%04x:%04x:%04x", ifd.id, ifd.field_type, ifd.num_items, ifd.value);
+
 			switch (ifd.id) {
 
 			case IFD_ImageType:
+				//printf(" ImageType");
 				if (ifd.value != 0)
 					return false;
 				break;
 
 			case IFD_Width:
+				//printf(" Width");
 				w = ifd.value;
 				break;
 
 			case IFD_Height:
+				//printf(" Height");
 				h = ifd.value;
 				break;
 
 			case IFD_BitsPerSample:
+				//printf(" BitsPerSample");
 				bits_per_component = ifd.value;
 				break;
 
 			case IFD_Compression:
+				//printf(" Compression");
 				if (ifd.value != 1)
 					return false;
 				break;
 
 			case IFD_PhotometricInterpretation:
+				//printf(" PhotometricInterpretation");
 				if (ifd.value != 2 && ifd.value != 1)
 					return false;
 				break;
 
 			case IFD_OffsetForData:
+				//printf(" OffsetForData");
 				offset_for_data = ifd.value;
 				break;
 
 			case IFD_NumComponents:
+				//printf(" NumComponents");
 				num_components = ifd.value;
 				break;
 
 			case IFD_RowsPerStrip:
+				//printf(" RowsPerStrip");
 				if (ifd.value != h)
 					return false;
 				break;
 
-			case IFD_TotalButesForData:
+			case IFD_TotalBytesForData:
+				//printf(" TotalBytesForData");
 				total_data_bytes = ifd.value;
 				break;
 
 			case IFD_PlanarConfiguration:
+				//printf(" Planar Configuration");
 				if (ifd.value != 1)
 					return false;
+				break;
+
+			case IFD_ExtraSamples:
+				//printf(" ExtraSamples");
+				break;
+
+			case IFD_SampleFormat:
+				//printf(" SampleFormat are %d", ifd.value);
 				break;
 					
 			// Ignored
 			case IFD_ICCProfile:
+				//printf(" ICCProfile");
+				break;
+
 			case IFD_Exif:
+				//printf(" Exif..");
+				break;
 			case IFD_XMLPacket:
+				//printf(" XMLPacket..");
+				break;
 			case IFD_Photoshop:
+				//printf(" Photshop..");
+				break;
 			case IFD_DateTime:
+				//printf(" DateTime..");
+				break;
 			case IFD_Software:
+				//printf(" Sofware..");
+				break;
 			case IFD_XResolution:			// Typically 72 inch
 			case IFD_YResolution:
 			case IFD_ResolutionUnits:		// Typically inch
+				//printf(" Resolution..");
+				break;
 			case IFD_Orientation:
+				//printf(" Orientation");
+				break;
 				// ignore value
 				break;
-
 			default:
-				printf("Invalid IFD: %04x %04x %08d\n", ifd.id, ifd.field_type, ifd.value);
 				break;
 			}
+
+			//printf("\n");
 		}
 
 		if (w == 0 || h == 0 || total_data_bytes == 0 || offset_for_data == 0)
 			return false;
+
+		// This can be 8,16 ore 32, or an offset in the file to get the bits_per_each_component
+		// Here I assume all the components have the same number of bits
+		if (bits_per_component > 32) {
+			// Interpret the value as offset in the file
+			f.seek(bits_per_component);
+			uint16_t us_bpc;
+			f.read(us_bpc);
+			bits_per_component = us_bpc;
+		}
 
 		f.seek(offset_for_data);
 
