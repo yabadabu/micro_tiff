@@ -1,7 +1,7 @@
 # mini_tiff
 
-This is a super simple header only library to read/write TIFF files supporting 16 bits per channel (unsigned shorts), and 32 bits per channel (floats)
-I use it to read and save files and see the files in Photoshop for example.
+This is a super simple header only library to read/write TIFF files supporting 16 bits per channel (unsigned shorts), and 32 bits per channel (floats).
+I'm using it to read and save files in 16bits/float and check the results inside Photshop for example.
 
 # Features
 
@@ -12,6 +12,7 @@ I use it to read and save files and see the files in Photoshop for example.
 - Data is assumed to be in a linear buffer when saving it
 - No exceptions. API will return true if everything is ok, false if there is an error.
 - For 4 channels images, pixel layout is Red, Green, Blue, Alpha
+- No memory allocations
 
 # Install
 
