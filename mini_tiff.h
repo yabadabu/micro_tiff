@@ -134,6 +134,11 @@ namespace MiniTiff {
 		f.write(Header{});
 
 		uint16_t num_ifds = 10;
+
+		// When saving floats, we store an additional IFDEntry entry
+		if( bits_per_component == 32 )
+			++num_ifds;
+
 		f.write(num_ifds);
 
 		uint32_t bytes_per_component = bits_per_component / 8;
