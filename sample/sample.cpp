@@ -53,7 +53,19 @@ bool runTest(const Test& t) {
 	return is_ok;
 }
 
+void dumpInfo( const char* ifilename ) {
+	printf( "%s\n", ifilename);
+	MiniTiff::info( ifilename, []( uint16_t id, uint32_t value, uint32_t value_type, uint32_t num_elems  ) {
+		printf( "  %04x : %32s : %6d (%08x) x%d elems of type %d \n", id, MiniTiff::Tags::asStr( id ), value, value, num_elems, value_type);
+	});
+}
+
 int main(int argc, char** argv) {
+
+	const char* infile = "G_32x32_8b.tif";
+	if( argc > 1 )
+		infile = argv[1];
+	dumpInfo(infile);
 
 	Test tests[10] = {
 		{ 32, 32, 1, 8, "G_32x32_8b.tif"},
@@ -77,7 +89,6 @@ int main(int argc, char** argv) {
 		++n_tests;
 		if (runTest(t))
 			n_ok++;
-
 	}
 	printf("%d/%d OK\n", n_ok, n_tests);
 	return n_ok == n_tests ? 0 : -1;

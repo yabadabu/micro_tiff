@@ -70,24 +70,7 @@ namespace MiniTiff {
 		}
 	};
 
-	namespace internal {
-
-		struct IFDEntry {
-			uint16_t id = 0;
-			uint16_t field_type = 4;	// int
-			uint32_t num_items = 1;
-			uint32_t value = 0;
-			IFDEntry() = default;
-			IFDEntry(uint16_t new_id, uint32_t new_value) : id(new_id), value(new_value) {}
-		};
-
-		struct Header {
-			uint8_t  byte_order[2] = { 0x49, 0x49 };
-			uint8_t  magic[2] = { 0x2a, 0x00 };
-			uint32_t offset_first_ifd = 8;				// This is not strictly true
-			bool isValid() const { return magic[0] == 0x2a && magic[1] == 0 && byte_order[0] == 0x49 && byte_order[1] == 0x49 && offset_first_ifd == 8; }
-		};
-
+	namespace Tags {
 		static constexpr uint16_t IFD_ImageType = 0x00FE;
 		static constexpr uint16_t IFD_Width = 0x0100;
 		static constexpr uint16_t IFD_Height = 0x0101;
@@ -112,11 +95,62 @@ namespace MiniTiff {
 		static constexpr uint16_t IFD_PlanarConfiguration = 0x011c;		// Interleaved?
 		static constexpr uint16_t IFD_Exif = 0x8769;
 		static constexpr uint16_t IFD_ICCProfile = 0x8773;
+
+		const char* asStr( uint16_t tag_id ) {
+			#define DECL_TAG_NAME(x) if( tag_id == IFD_##x ) return #x
+			DECL_TAG_NAME(ImageType);
+			DECL_TAG_NAME(Width);
+			DECL_TAG_NAME(Height);
+			DECL_TAG_NAME(BitsPerSample);
+			DECL_TAG_NAME(Compression);
+			DECL_TAG_NAME(PhotometricInterpretation);
+			DECL_TAG_NAME(TotalBytesForData);
+			DECL_TAG_NAME(OffsetForData);
+			DECL_TAG_NAME(Orientation);
+			DECL_TAG_NAME(NumComponents);
+			DECL_TAG_NAME(RowsPerStrip);
+			DECL_TAG_NAME(ExtraSamples);
+			DECL_TAG_NAME(SampleFormat);
+
+			DECL_TAG_NAME(XResolution);
+			DECL_TAG_NAME(YResolution);
+			DECL_TAG_NAME(ResolutionUnits);
+			DECL_TAG_NAME(Software);
+			DECL_TAG_NAME(DateTime);
+			DECL_TAG_NAME(XMLPacket);
+			DECL_TAG_NAME(Photoshop);
+			DECL_TAG_NAME(PlanarConfiguration);
+			DECL_TAG_NAME(Exif);
+			DECL_TAG_NAME(ICCProfile);
+			#undef DECL_TAG_NAME
+			return "Unknown";
+		}
+	}
+
+	namespace internal {
+
+		struct IFDEntry {
+			uint16_t id = 0;
+			uint16_t field_type = 4;	// int
+			uint32_t num_items = 1;
+			uint32_t value = 0;
+			IFDEntry() = default;
+			IFDEntry(uint16_t new_id, uint32_t new_value) : id(new_id), value(new_value) {}
+		};
+
+		struct Header {
+			uint8_t  byte_order[2] = { 0x49, 0x49 };
+			uint8_t  magic[2] = { 0x2a, 0x00 };
+			uint32_t offset_first_ifd = 8;				// This is not strictly true
+			bool isValid() const { return magic[0] == 0x2a && magic[1] == 0 && byte_order[0] == 0x49 && byte_order[1] == 0x49 && offset_first_ifd == 8; }
+		};
+
 	}
 
 	static bool save(const char* ofilename, int w, int h, int num_components, int bits_per_component, const void* data ) {
 
 		using namespace internal;
+		using namespace Tags;
 
 		// Validate input parameters
 		if( ! ((w > 0)
@@ -163,8 +197,35 @@ namespace MiniTiff {
 		f.write(IFDEntry(IFD_TotalBytesForData, total_data_bytes));
 		size_t num_padding_bytes = offset_for_data - f.bytes_written;
 		for (int i = 0; i < num_padding_bytes; ++i)
-			f.write((uint8_t)0xff);
+			f.write((uint8_t)0x00);
 		f.writeBytes(data, total_data_bytes);
+		return true;
+	}
+
+	template< typename Fn >
+	static bool info(const char* ifilename, Fn fn ) {
+
+		using namespace internal;
+		using namespace Tags;
+
+		FileReader f;
+		if (!f.open(ifilename))
+			return false;
+
+		Header header;
+		f.read(header);
+		if (!header.isValid())
+			return false;
+
+		uint16_t num_ifds = 0;
+		f.read(num_ifds);
+
+		for (int i = 0; i < num_ifds; ++i) {
+			IFDEntry ifd;
+			f.read(ifd);
+			fn( ifd.id, ifd.value, ifd.field_type, ifd.num_items );
+		}
+
 		return true;
 	}
 
@@ -172,6 +233,7 @@ namespace MiniTiff {
 	static bool load(const char* ifilename, Fn fn ) {
 
 		using namespace internal;
+		using namespace Tags;
 
 		FileReader f;
 		if (!f.open(ifilename))

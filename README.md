@@ -1,18 +1,19 @@
 # mini_tiff
 
-This is a super simple header only library to read/write TIFF files supporting 16 bits per channel (unsigned shorts), and 32 bits per channel (floats).
-I'm using it to read and save files in 16bits/float and check the results inside Photshop for example.
+This is a super simple header only library to read/write TIFF files supporting 8, 16 bits per channel (unsigned shorts), and 32 bits per channel (floats).
+I'm using it to read and save files in 16bits/float and check the results inside Photoshop for example.
 
 # Features
 
 - Support mono, RGB and RGB+Alpha files
 - Support 8,16 bits or 32 bits per channel (uint8/uint16/float)
 - Only uncompressed TIFFs
-- No metadata is saved/recovered.
+- Minimal metadata is saved
 - Data is assumed to be in a linear buffer when saving it
 - No exceptions. API will return true if everything is ok, false if there is an error.
 - For 4 channels images, pixel layout is Red, Green, Blue, Alpha
 - No memory allocations
+- You can also recover basic metadata using the info
 
 # Install
 
@@ -43,4 +44,14 @@ If file can't be parsed the lambda will not get called and a false is returned.
     // Read the data from f.
     return f.readBytes( rgb.data(), w * h * num_components * (bits_per_component / 8));
     });
+```
+
+# List TAGs
+
+Basic metadata can be recovered by providing a lambda that will be called for each IFDTag. The helper function ```Tags::asStr``` will return a const char* for the basic tags.
+
+```c++
+  MiniTiff::info( ifilename, []( uint16_t id, uint32_t value, uint32_t value_type, uint32_t num_elems  ) {
+    printf( "  %04x : %32s : %6d (%08x) x%d elems of type %d \n", id, MiniTiff::Tags::asStr( id ), value, value, num_elems, value_type);
+  });
 ```

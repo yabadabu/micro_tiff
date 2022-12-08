@@ -8,7 +8,7 @@ OBJS_PATH=objs
 SRCS=sample
 OBJS=$(foreach f,${SRCS},$(OBJS_PATH)/$(basename $f).o)
 
-$(OBJS_PATH)/%.o : %.cpp ${wildcard *.h} Makefile | $(OBJS_PATH)
+$(OBJS_PATH)/%.o : %.cpp ${wildcard ../*.h} Makefile | $(OBJS_PATH)
 	@echo Compiling $@
 	@$(CC) $(CXXFLAGS) $< -o $@
 
