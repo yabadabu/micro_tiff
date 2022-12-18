@@ -42,28 +42,6 @@ bool runTest(const Test& t) {
 		});
 
 	if (is_ok) {
-
-		if (t.show_contents) {
-
-
-			if (t.bits_per_comp == 16) {
-
-				uint16_t* v0 = (uint16_t*)color_data.data();
-				uint16_t* v = v0;
-				for( int i=0; i<color_data.size() / 2; ++i, ++v ) 
-					*v = swap16( *v );
-
-				// Print some float values
-				v = v0;
-				for (int i = 0; i < aw; ++i) {
-					if( i % anum_comps == 0  && i > 0)
-						printf( "\n");
-					printf("%04x ", v[i]);
-				}
-				printf("\n");
-			}
-		}
-
 		char ofilename[256];
 		sprintf(ofilename, "saved_%s", t.filename);
 		bool save_ok = MiniTiff::save(ofilename, t.w, t.h, t.num_comps, t.bits_per_comp, color_data.data());
@@ -90,7 +68,7 @@ int main(int argc, char** argv) {
 	//Test tests[2] = {
 	Test tests[21] = {
 
-		{ 720, 486, 3, 8, "brain_604.tif"},
+		{ 80, 54, 4, 8, "brain_604.tif"},
 
 		{ 32, 32, 1, 8, "G_32x32_8b.tif"},
 		{ 32, 32, 3, 8, "RGB_32x32_8b.tif"},
@@ -128,6 +106,7 @@ int main(int argc, char** argv) {
 			printf( "%s failed\n", t.filename );
 			//break;
 		}
+		//break;
 	}
 	printf("%d/%d OK\n", n_ok, n_tests);
 	return n_ok == n_tests ? 0 : -1;
