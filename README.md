@@ -7,13 +7,14 @@ I'm using it to read and save files in 16bits/float and check the results inside
 
 - Support mono, RGB and RGB+Alpha files
 - Support 8,16 bits or 32 bits per channel (uint8/uint16/float)
+- Support Big and Little endian formats
 - Only uncompressed TIFFs
 - Minimal metadata is saved
 - Data is assumed to be in a linear buffer when saving it
 - No exceptions. API will return true if everything is ok, false if there is an error.
 - For 4 channels images, pixel layout is Red, Green, Blue, Alpha
 - No memory allocations
-- You can also recover basic metadata using the info
+- You can also recover basic metadata using the info command
 
 # Install
 
