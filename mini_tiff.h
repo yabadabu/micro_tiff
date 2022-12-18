@@ -71,12 +71,14 @@ namespace MiniTiff {
 	};
 
 	namespace Tags {
+
 		static constexpr uint16_t IFD_ImageType = 0x00FE;
 		static constexpr uint16_t IFD_Width = 0x0100;
 		static constexpr uint16_t IFD_Height = 0x0101;
 		static constexpr uint16_t IFD_BitsPerSample = 0x0102;
 		static constexpr uint16_t IFD_Compression = 0x0103;
 		static constexpr uint16_t IFD_PhotometricInterpretation = 0x0106;
+		static constexpr uint16_t IFD_FillOrder = 0x010A;
 		static constexpr uint16_t IFD_OffsetForData = 0x0111;
 		static constexpr uint16_t IFD_Orientation = 0x0112;
 		static constexpr uint16_t IFD_NumComponents = 0x0115;
@@ -104,6 +106,7 @@ namespace MiniTiff {
 			DECL_TAG_NAME(BitsPerSample);
 			DECL_TAG_NAME(Compression);
 			DECL_TAG_NAME(PhotometricInterpretation);
+			DECL_TAG_NAME(FillOrder);
 			DECL_TAG_NAME(TotalBytesForData);
 			DECL_TAG_NAME(OffsetForData);
 			DECL_TAG_NAME(Orientation);
@@ -129,20 +132,58 @@ namespace MiniTiff {
 
 	namespace internal {
 
+		uint32_t swap32( uint32_t x ) {
+			return ((x>>24)&0xff) | 
+             ((x<<8)&0xff0000) | 
+             ((x>>8)&0xff00) |
+             ((x<<24)&0xff000000);
+		}
+		uint16_t swap16( uint16_t x ) {
+			return (x>>8) | (x<<8);
+		}
+
 		struct IFDEntry {
 			uint16_t id = 0;
-			uint16_t field_type = 4;	// int
+			uint16_t field_type = 4;	// 1:Byte, 2:Char, 3:Short, 4:Int, 5:Rational (num/den), 11:Float, 12:Double
 			uint32_t num_items = 1;
 			uint32_t value = 0;
 			IFDEntry() = default;
 			IFDEntry(uint16_t new_id, uint32_t new_value) : id(new_id), value(new_value) {}
+			void swap() {
+				id = swap16(id);
+				field_type = swap16(field_type);
+				num_items = swap32(num_items);
+
+				if( id == Tags::IFD_BitsPerSample ) {
+					if( field_type == 3 && num_items == 1 )
+						value = swap16( value );
+					else 
+					  value = swap32( value );
+				} else {
+					if( field_type == 3 )
+						value = swap16(value);
+					else
+					  value = swap32( value );
+				}
+			}
 		};
 
 		struct Header {
 			uint8_t  byte_order[2] = { 0x49, 0x49 };
 			uint8_t  magic[2] = { 0x2a, 0x00 };
 			uint32_t offset_first_ifd = 8;				// This is not strictly true
-			bool isValid() const { return magic[0] == 0x2a && magic[1] == 0 && byte_order[0] == 0x49 && byte_order[1] == 0x49 && offset_first_ifd == 8; }
+			bool isValid() const {
+				if( byte_order[0] != byte_order[1] )
+					return false;
+				if( byte_order[0] == 0x49 && magic[0] == 0x2a && magic[1] == 0x00 )
+					return true;
+				if( byte_order[0] == 0x4D && magic[1] == 0x2a && magic[0] == 0x00 )
+					return true;
+				return false;
+			}
+			bool mustSwapBytes() const {
+				return magic[1] == 0x2a;
+			}
 		};
 
 	}
@@ -217,20 +258,30 @@ namespace MiniTiff {
 		if (!header.isValid())
 			return false;
 
+		bool swap_bytes = header.mustSwapBytes();
+		if( swap_bytes ) header.offset_first_ifd = swap32( header.offset_first_ifd );
+		f.seek(header.offset_first_ifd);
+
 		uint16_t num_ifds = 0;
 		f.read(num_ifds);
+		if( swap_bytes ) num_ifds = swap16(num_ifds);
+
+		printf( "Info is valid. num_ifds %08x. Swap:%d\n", num_ifds, swap_bytes);
 
 		for (int i = 0; i < num_ifds; ++i) {
 			IFDEntry ifd;
 			f.read(ifd);
+			if( swap_bytes ) ifd.swap();
 			fn( ifd.id, ifd.value, ifd.field_type, ifd.num_items );
 		}
 
 		return true;
 	}
 
-	template< typename Fn >
-	static bool load(const char* ifilename, Fn fn ) {
+	#define tiff_printf	 printf
+
+	template< typename Fn, typename FnMeta = void>
+	static bool load(const char* ifilename, Fn fn) {
 
 		using namespace internal;
 		using namespace Tags;
@@ -244,14 +295,21 @@ namespace MiniTiff {
 		if (!header.isValid())
 			return false;
 
+		bool swap_bytes = header.mustSwapBytes();
+		if( swap_bytes ) header.offset_first_ifd = swap32( header.offset_first_ifd );
+		f.seek(header.offset_first_ifd);
+
+		tiff_printf(" offset_first_ifd: %08x (%d). Swap:%d\n", header.offset_first_ifd , header.offset_first_ifd, swap_bytes );
+
 		uint16_t num_ifds = 0;
 		f.read(num_ifds);
+		if( swap_bytes ) num_ifds = swap16(num_ifds);
 
 		int      w = 0;
 		int      h = 0;
 		int      num_components = 0;
 		int      bits_per_component = 0;
-		uint32_t offset_for_data = 0;
+		uint32_t offset_for_data = -1;
 		uint32_t total_data_bytes = 0;
 			
 		for (int i = 0; i < num_ifds; ++i) {
@@ -259,131 +317,149 @@ namespace MiniTiff {
 			IFDEntry ifd;
 			f.read(ifd);
 
-			//printf("%04x:%04x:%04x:%04x", ifd.id, ifd.field_type, ifd.num_items, ifd.value);
+			if( 0 ) {
+				char* p = (char*) &ifd;
+				for( int i=0; i<sizeof(IFDEntry); ++i ) {
+					printf( "%02x ", p[i]);
+				}
+				printf( "\n");
+			}
+
+			if( swap_bytes ) ifd.swap();
+
+			//if( fn_meta )
+			//	fn_meta( ifd.id, ifd.value, ifd.field_type, ifd.num_items );
+
+			tiff_printf("%04x:%04x:%04x:%08x %s: ", ifd.id, ifd.field_type, ifd.num_items, ifd.value, Tags::asStr( ifd.id ));
 
 			switch (ifd.id) {
 
 			case IFD_ImageType:
-				//printf(" ImageType");
+				//if( swap_bytes ) ifd.value = swap16(ifd.value);
 				if (ifd.value != 0)
 					return false;
 				break;
 
 			case IFD_Width:
-				//printf(" Width");
+				//if( swap_bytes ) ifd.value = swap16(ifd.value);
+				tiff_printf("%d", ifd.value);
 				w = ifd.value;
 				break;
 
 			case IFD_Height:
-				//printf(" Height");
+				//if( swap_bytes ) ifd.value = swap16(ifd.value);
+				tiff_printf("%d", ifd.value);
 				h = ifd.value;
 				break;
 
 			case IFD_BitsPerSample:
-				//printf(" BitsPerSample");
+				tiff_printf("(At @0x%08x)", ifd.value);
+				//if( swap_bytes ) ifd.value = swap32(ifd.value);
 				bits_per_component = ifd.value;
 				break;
 
 			case IFD_Compression:
-				//printf(" Compression");
+				//if( swap_bytes ) ifd.value = swap16(ifd.value);
+				tiff_printf("%d", ifd.value);
 				if (ifd.value != 1)
 					return false;
 				break;
 
 			case IFD_PhotometricInterpretation:
-				//printf(" PhotometricInterpretation");
+				//if( swap_bytes ) ifd.value = swap16(ifd.value);
 				if (ifd.value != 2 && ifd.value != 1)
 					return false;
 				break;
 
 			case IFD_OffsetForData:
-				//printf(" OffsetForData");
+				tiff_printf("(At @0x%08x)", ifd.value);
+				//if( swap_bytes ) ifd.value = swap32(ifd.value);
 				offset_for_data = ifd.value;
 				break;
 
 			case IFD_NumComponents:
-				//printf(" NumComponents");
+				//if( swap_bytes ) ifd.value = swap16(ifd.value);
+				tiff_printf("%d", ifd.value);
 				num_components = ifd.value;
 				break;
 
 			case IFD_RowsPerStrip:
-				//printf(" RowsPerStrip");
+				//if( swap_bytes ) ifd.value = swap16(ifd.value);
+				tiff_printf("%d (should be %d)", ifd.value, h);
 				if (ifd.value != h)
 					return false;
 				break;
 
 			case IFD_TotalBytesForData:
-				//printf(" TotalBytesForData");
+				//if( swap_bytes ) ifd.value = swap32(ifd.value);
+				tiff_printf("%d", ifd.value);
 				total_data_bytes = ifd.value;
 				break;
 
 			case IFD_PlanarConfiguration:
-				//printf(" Planar Configuration");
+				//if( swap_bytes ) ifd.value = swap16(ifd.value);
 				if (ifd.value != 1)
 					return false;
 				break;
 
-			case IFD_ExtraSamples:
-				//printf(" ExtraSamples");
-				break;
-
 			case IFD_SampleFormat:
-				//printf(" SampleFormat are %d", ifd.value);
+				//if( swap_bytes ) ifd.value = swap16(ifd.value);
+				tiff_printf("%d", ifd.value);
 				break;
 					
 			// Ignored
 			case IFD_ICCProfile:
-				//printf(" ICCProfile");
 				break;
 
+			case IFD_ExtraSamples:
+				break;
 			case IFD_Exif:
-				//printf(" Exif..");
 				break;
 			case IFD_XMLPacket:
-				//printf(" XMLPacket..");
 				break;
 			case IFD_Photoshop:
-				//printf(" Photshop..");
 				break;
 			case IFD_DateTime:
-				//printf(" DateTime..");
 				break;
 			case IFD_Software:
-				//printf(" Sofware..");
 				break;
 			case IFD_XResolution:			// Typically 72 inch
 			case IFD_YResolution:
 			case IFD_ResolutionUnits:		// Typically inch
-				//printf(" Resolution..");
 				break;
 			case IFD_Orientation:
-				//printf(" Orientation");
-				break;
-				// ignore value
 				break;
 			default:
 				break;
 			}
 
-			//printf("\n");
+			tiff_printf("\n");
 		}
 
-		if (w == 0 || h == 0 || total_data_bytes == 0 || offset_for_data == 0)
+		if (w == 0 || h == 0 || total_data_bytes == 0 || offset_for_data == -1) {
+			tiff_printf( "Didn't read needed data: w:%d h:%d total_data_bytes:%d offset_for_data:%d\n", w, h, total_data_bytes, offset_for_data);
 			return false;
+		}
 
 		// This can be 8,16 ore 32, or an offset in the file to get the bits_per_each_component
 		// Here I assume all the components have the same number of bits
-		if (bits_per_component > 32) {
+		if (bits_per_component != 8 && bits_per_component != 16 && bits_per_component != 32) {
 			// Interpret the value as offset in the file
 			f.seek(bits_per_component);
 			uint16_t us_bpc;
 			f.read(us_bpc);
 			bits_per_component = us_bpc;
+			if( swap_bytes ) bits_per_component = swap16(bits_per_component);
+			if (bits_per_component != 8 && bits_per_component != 16 && bits_per_component != 32) {
+				tiff_printf( "Invalid bits per component: %d (%08x)\n", bits_per_component, bits_per_component);
+				return false;
+			}
 		}
 
 		f.seek(offset_for_data);
-
+		tiff_printf( "Read needed data: w:%d h:%d bits_per_component:%d total_data_bytes:%d offset_for_data:%d\n", w, h, bits_per_component, total_data_bytes, offset_for_data);
 		return fn(w, h, num_components, bits_per_component, f);
 	}
+
 
 }
