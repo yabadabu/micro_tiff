@@ -24,35 +24,34 @@
 
 namespace MiniTiff {
 
-	namespace Tags {
+	static constexpr uint16_t IFD_ImageType = 0x00FE;
+	static constexpr uint16_t IFD_Width = 0x0100;
+	static constexpr uint16_t IFD_Height = 0x0101;
+	static constexpr uint16_t IFD_BitsPerSample = 0x0102;
+	static constexpr uint16_t IFD_Compression = 0x0103;
+	static constexpr uint16_t IFD_PhotometricInterpretation = 0x0106;
+	static constexpr uint16_t IFD_FillOrder = 0x010A;
+	static constexpr uint16_t IFD_OffsetForData = 0x0111;
+	static constexpr uint16_t IFD_Orientation = 0x0112;
+	static constexpr uint16_t IFD_NumComponents = 0x0115;
+	static constexpr uint16_t IFD_RowsPerStrip = 0x0116;
+	static constexpr uint16_t IFD_TotalBytesForData = 0x0117;
+	static constexpr uint16_t IFD_ExtraSamples = 0x0152;			// Meaning of the alpha channel (for RGBA images)
+	static constexpr uint16_t IFD_SampleFormat = 0x0153;			// Data are uints(1), ints(2) or floats(3)?
 
-		static constexpr uint16_t IFD_ImageType = 0x00FE;
-		static constexpr uint16_t IFD_Width = 0x0100;
-		static constexpr uint16_t IFD_Height = 0x0101;
-		static constexpr uint16_t IFD_BitsPerSample = 0x0102;
-		static constexpr uint16_t IFD_Compression = 0x0103;
-		static constexpr uint16_t IFD_PhotometricInterpretation = 0x0106;
-		static constexpr uint16_t IFD_FillOrder = 0x010A;
-		static constexpr uint16_t IFD_OffsetForData = 0x0111;
-		static constexpr uint16_t IFD_Orientation = 0x0112;
-		static constexpr uint16_t IFD_NumComponents = 0x0115;
-		static constexpr uint16_t IFD_RowsPerStrip = 0x0116;
-		static constexpr uint16_t IFD_TotalBytesForData = 0x0117;
-		static constexpr uint16_t IFD_ExtraSamples = 0x0152;			// Meaning of the alpha channel (for RGBA images)
-		static constexpr uint16_t IFD_SampleFormat = 0x0153;			// Data are uints(1), ints(2) or floats(3)?
+	static constexpr uint16_t IFD_XResolution = 0x011A;
+	static constexpr uint16_t IFD_YResolution = 0x011B;
+	static constexpr uint16_t IFD_ResolutionUnits = 0x0128;			// Inches
+	static constexpr uint16_t IFD_Software = 0x0131;
+	static constexpr uint16_t IFD_DateTime = 0x0132;
+	static constexpr uint16_t IFD_XMLPacket = 0x02BC;
+	static constexpr uint16_t IFD_Photoshop = 0x8649;
+	static constexpr uint16_t IFD_PlanarConfiguration = 0x011c;		// Interleaved?
+	static constexpr uint16_t IFD_Exif = 0x8769;
+	static constexpr uint16_t IFD_ICCProfile = 0x8773;
 
-		static constexpr uint16_t IFD_XResolution = 0x011A;
-		static constexpr uint16_t IFD_YResolution = 0x011B;
-		static constexpr uint16_t IFD_ResolutionUnits = 0x0128;			// Inches
-		static constexpr uint16_t IFD_Software = 0x0131;
-		static constexpr uint16_t IFD_DateTime = 0x0132;
-		static constexpr uint16_t IFD_XMLPacket = 0x02BC;
-		static constexpr uint16_t IFD_Photoshop = 0x8649;
-		static constexpr uint16_t IFD_PlanarConfiguration = 0x011c;		// Interleaved?
-		static constexpr uint16_t IFD_Exif = 0x8769;
-		static constexpr uint16_t IFD_ICCProfile = 0x8773;
-
-		const char* asStr( uint16_t tag_id ) {
+	struct Tags {
+		static const char* asStr( uint16_t tag_id ) {
 			#define DECL_TAG_NAME(x) if( tag_id == IFD_##x ) return #x
 			DECL_TAG_NAME(ImageType);
 			DECL_TAG_NAME(Width);
@@ -82,19 +81,9 @@ namespace MiniTiff {
 			#undef DECL_TAG_NAME
 			return "Unknown";
 		}
-	}
+	};
 
 	namespace internal {
-
-		uint32_t swap32( uint32_t x ) {
-			return ((x>>24)&0xff) | 
-             ((x<<8)&0xff0000) | 
-             ((x>>8)&0xff00) |
-             ((x<<24)&0xff000000);
-		}
-		uint16_t swap16( uint16_t x ) {
-			return (x>>8) | (x<<8);
-		}
 
 		struct IFDEntry {
 			uint16_t id = 0;
@@ -108,7 +97,7 @@ namespace MiniTiff {
 				field_type = swap16(field_type);
 				num_items = swap32(num_items);
 
-				if( id == Tags::IFD_BitsPerSample ) {
+				if( id == IFD_BitsPerSample ) {
 					if( field_type == 3 && num_items == 1 )
 						value = swap16( value );
 					else 
@@ -119,6 +108,16 @@ namespace MiniTiff {
 					else
 					  value = swap32( value );
 				}
+			}
+
+			static uint32_t swap32( uint32_t x ) {
+				return ((x>>24)&0xff) | 
+	             ((x<<8)&0xff0000) | 
+	             ((x>>8)&0xff00) |
+	             ((x<<24)&0xff000000);
+			}
+			static uint16_t swap16( uint16_t x ) {
+				return (x>>8) | (x<<8);
 			}
 		};
 
@@ -140,7 +139,7 @@ namespace MiniTiff {
 			}
 		};
 
-	}
+	};
 
 	struct FileWriter {
 		FILE* f = nullptr;
@@ -184,12 +183,12 @@ namespace MiniTiff {
 			if( swap_16b_data ) {
 				uint16_t* p = (uint16_t*) data;
 				for( int i=0; i<num_bytes/2; ++i, ++p ) 
-					*p = internal::swap16(*p);
+					*p = internal::IFDEntry::swap16(*p);
 			}
 			else if( swap_32b_data ) {
 				uint32_t* p = (uint32_t*) data;
 				for( int i=0; i<num_bytes/4; ++i, ++p ) 
-					*p = internal::swap32(*p);
+					*p = internal::IFDEntry::swap32(*p);
 			}
 
 			return n == num_bytes;
@@ -206,7 +205,6 @@ namespace MiniTiff {
 	static bool save(const char* ofilename, int w, int h, int num_components, int bits_per_component, const void* data ) {
 
 		using namespace internal;
-		using namespace Tags;
 
 		// Validate input parameters
 		if( ! ((w > 0)
@@ -262,7 +260,6 @@ namespace MiniTiff {
 	static bool info(const char* ifilename, Fn fn ) {
 
 		using namespace internal;
-		using namespace Tags;
 
 		FileReader f;
 		if (!f.open(ifilename))
@@ -274,12 +271,12 @@ namespace MiniTiff {
 			return false;
 
 		bool swap_bytes = header.mustSwapBytes();
-		if( swap_bytes ) header.offset_first_ifd = swap32( header.offset_first_ifd );
+		if( swap_bytes ) header.offset_first_ifd = IFDEntry::swap32( header.offset_first_ifd );
 		f.seek(header.offset_first_ifd);
 
 		uint16_t num_ifds = 0;
 		f.read(num_ifds);
-		if( swap_bytes ) num_ifds = swap16(num_ifds);
+		if( swap_bytes ) num_ifds = IFDEntry::swap16(num_ifds);
 
 		for (int i = 0; i < num_ifds; ++i) {
 			IFDEntry ifd;
@@ -298,7 +295,6 @@ namespace MiniTiff {
 	static bool load(const char* ifilename, Fn fn) {
 
 		using namespace internal;
-		using namespace Tags;
 
 		FileReader f;
 		if (!f.open(ifilename))
@@ -310,14 +306,14 @@ namespace MiniTiff {
 			return false;
 
 		bool swap_bytes = header.mustSwapBytes();
-		if( swap_bytes ) header.offset_first_ifd = swap32( header.offset_first_ifd );
+		if( swap_bytes ) header.offset_first_ifd = IFDEntry::swap32( header.offset_first_ifd );
 		f.seek(header.offset_first_ifd);
 
 		tiff_printf("OffsetFirstIFD: %08x (%d). Swap:%d\n", header.offset_first_ifd , header.offset_first_ifd, swap_bytes );
 
 		uint16_t num_ifds = 0;
 		f.read(num_ifds);
-		if( swap_bytes ) num_ifds = swap16(num_ifds);
+		if( swap_bytes ) num_ifds = IFDEntry::swap16(num_ifds);
 
 		int      w = 0;
 		int      h = 0;
@@ -446,7 +442,7 @@ namespace MiniTiff {
 			uint16_t us_bpc;
 			f.read(us_bpc);
 			bits_per_component = us_bpc;
-			if( swap_bytes ) bits_per_component = swap16(bits_per_component);
+			if( swap_bytes ) bits_per_component = IFDEntry::swap16(bits_per_component);
 			if (bits_per_component != 8 && bits_per_component != 16 && bits_per_component != 32) {
 				tiff_printf( "Invalid bits per component: %d (%08x)\n", bits_per_component, bits_per_component);
 				return false;
